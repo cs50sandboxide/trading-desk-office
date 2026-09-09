@@ -58,6 +58,19 @@ without firing a native `SubagentStart`.
 
 The hook swallows all exceptions and exits 0 — it can never block your CLI.
 
+### If every desk stays grey
+
+The board keys on the `agent_type` string the hook receives, and it must
+match `DESKS` in `office/desk_hook.py` and in `index.html`. A plugin-supplied
+agent may report a namespaced name (`trading-desk:risk`), which silently
+matches nothing. To see the real string:
+
+```bash
+DESK_HOOK_DEBUG=1   # then run a desk and read office/debug.log
+```
+
+Update both `DESKS` lists to whatever appears there.
+
 ### Requires Claude Code
 
 Hooks exist in the Claude Code CLI and desktop app only. There is no hook

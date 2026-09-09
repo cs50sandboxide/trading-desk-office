@@ -49,8 +49,22 @@ def stop(state, desk):
         state["desks"][desk] = {"status": "resting", "since": time.time()}
 
 
+def debug(raw):
+    """Set DESK_HOOK_DEBUG=1 to dump raw payloads to office/debug.log.
+
+    Use this to discover the exact `agent_type` string your agents report —
+    plugin-supplied agents may be namespaced (e.g. "trading-desk:risk").
+    Whatever appears there must match DESKS above and in index.html.
+    """
+    if os.environ.get("DESK_HOOK_DEBUG") != "1":
+        return
+    with open(STATE.parent / "debug.log", "a") as f:
+        f.write(json.dumps(raw) + "\n")
+
+
 def main():
     raw = json.load(sys.stdin)
+    debug(raw)
     event = raw.get("hook_event_name", "")
     state = load()
 
