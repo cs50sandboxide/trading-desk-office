@@ -1,31 +1,30 @@
 # Trading desk — house rules
 
-Loaded into every session. Keep it short; every line here is paid for on
-every turn.
+Loaded into every session. Keep it short; every line is paid for on every turn.
 
 ## Desks
-Address a desk directly, e.g. `@macro what is the front end pricing?`
-See `.claude/agents/` for the roster. Each desk owns a narrow IBKR tool
-allowlist — that allowlist is the token budget, do not widen it casually.
+`@fundamentals` `@technicals` `@risk` `@news` — see `.claude/agents/`.
+Each owns a narrow tool allowlist. That allowlist is the token budget;
+widening one is the most expensive edit in this repo.
+
+## What the IBKR connector does and does not have
+Read-only: 25 `get_*`/`search_*` tools, no order placement. Sizing is
+advisory, the human executes in TWS.
+- **No fundamentals** — no financials, estimates, or multiples.
+- **No news** — no headline feed. (`whats_new` is the connector changelog.)
+- **No indicators** — OHLCV bars only; RSI and friends are computed here.
+`@fundamentals` and `@news` therefore run on WebSearch/WebFetch.
 
 ## Data discipline (this is where tokens actually go)
-1. **Bound every query.** Option chains and long bar series are the only
-   things in this repo that can blow a context window. Always pass
-   `min_strike`/`max_strike`, and prefer `step_count` over a long `period`.
-2. **Compute, don't read.** More than ~30 rows: have `@quant` pull it to
-   `data/` and run pandas. Never reason over hundreds of raw OHLCV rows.
-3. **Return a verdict, not a table.** A desk reports its conclusion, the
-   2-3 numbers behind it, and what would falsify it.
+1. More than ~30 rows: write it to `data/` and compute over it with pandas.
+   Never restate raw OHLCV in a reply.
+2. Bound every query — prefer `step_count` over a long `period`.
+3. Return a verdict, the 2–3 numbers behind it, and what would falsify it.
 
-## Standing facts
-- IBKR access here is **read-only**. There is no order-placement tool.
-  Sizing is advisory; the human executes in TWS.
-- Quote data may be delayed depending on the account's subscriptions.
-  State the timestamp on any price you act on.
-- Never state a number you did not pull from a tool this session. No
-  recalled prices, no plausible-looking fills.
+## Never
+State a number you did not pull from a tool this session. No recalled
+prices, no reconstructed financials, no undated headlines.
 
 ## Memory
-Durable desk state lives in `notes/<desk>.md`. Read it at the start of a
-question, append to it when a view changes. Subagents are stateless — this
-file is the only continuity they have.
+Durable desk state lives in `notes/<desk>.md`. Subagents are stateless —
+that file is the only continuity they have.

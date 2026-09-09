@@ -1,119 +1,122 @@
 # trading-desk-office
 
-Six specialist trading desks you can address individually, each wired to the
-IBKR connector with a deliberately narrow tool allowlist.
+Four specialist desks you address directly in chat, plus a status board that
+shows which of them is working and which is resting.
 
-## Roster
+## Desks
 
-| Desk | Address | Covers | IBKR tools |
-|---|---|---|---|
-| Macro | `@macro` | Regime, rates, FX, commodities, index level | 6 |
-| Equities | `@equities` | Single names, peers, theme exposure | 6 |
-| Options | `@options` | Chains, strikes, spreads, expiries | 5 |
-| Risk | `@risk` | Positions, exposure, margin, attribution | 6 |
-| Execution | `@execution` | Live orders, fills, alerts | 6 |
-| Quant | `@quant` | Anything needing >30 rows of data | 3 + Bash/pandas |
-
-Ask a desk a question the way you would ask a colleague:
+| Desk | Covers | Data source |
+|---|---|---|
+| `@fundamentals` | Financials, growth story, what drives firm value | **Web** + IBKR themes/peers |
+| `@technicals` | Volume, RSI, MAs, support/resistance, momentum | IBKR bars → computed here |
+| `@risk` | Correlation vs. book, drawdown, margin, portfolio impact | IBKR account + computed |
+| `@news` | Headlines, catalysts, event calendar, macro | **Web** + IBKR themes |
 
 ```
-@risk what is my largest correlated cluster right now?
-@options build me a 30-delta call spread on NVDA for the March expiry
-@macro is the front end still pricing cuts?
+@technicals is NVDA overbought on the daily?
+@risk what does a 5% NVDA position do to my concentration?
+@news what's on the calendar for NVDA in the next month?
 ```
 
-## How it works
+## Your prompts go in these files
+
+Each `.claude/agents/*.md` has a `<!-- PASTE YOUR PROMPT -->` marker. Put
+your existing `trading-desk` persona above it and keep the plumbing section
+below it — that section documents which tools exist, in what order to call
+them, and which data the connector does **not** have. The frontmatter
+(`tools:`) is the token budget and should stay as written.
+
+## The office board
 
 ```
-you ──▶ main session ──▶ Task tool ──▶ desk subagent (own context window)
-                                          │
-                                          ├─▶ IBKR MCP tools (read-only)
-                                          └─▶ notes/<desk>.md  (memory)
-                                          │
-                          summary only ◀──┘
+Claude Code ──hook──▶ office/desk_hook.py ──▶ office/state.json ──▶ index.html
 ```
 
-Each desk is a markdown file in `.claude/agents/`. Frontmatter declares the
-name, the description used for routing, the tool allowlist, and the model.
-The body is the desk's operating procedure.
+Four cards, one per desk. Green pulsing lamp = working, with elapsed time
+and the task you gave it. Grey = resting. Polls every 2s.
 
-When you address a desk, it runs in its **own context window** and returns
-only its conclusion to the main thread. That isolation is the whole point:
-a 400-row option chain is paid for once, inside the options desk, and never
-enters the conversation you are reading.
+**This costs zero model tokens.** Hooks are subprocess calls; their payloads
+never enter a context window. The board is free.
 
-## Read-only
+### Run it
 
-The IBKR connector exposed here is read-only — 25 `get_*`/`search_*` tools
-and no order-placement tool. The desks analyse, size, and hand you a ticket;
-you enter it in TWS. `@execution` reports on orders and fills but cannot
-place, amend, or cancel one.
+```bash
+python3 -m http.server 8787 --directory office
+# open http://localhost:8787
+```
+
+### Wire the hooks
+
+Add to `~/.claude/settings.json` (adjust the path to this repo):
+
+```json
+{
+  "hooks": {
+    "SubagentStart": [{ "hooks": [{ "type": "command",
+      "command": "python3 /path/to/trading-desk-office/office/desk_hook.py" }] }],
+    "SubagentStop":  [{ "hooks": [{ "type": "command",
+      "command": "python3 /path/to/trading-desk-office/office/desk_hook.py" }] }],
+    "PreToolUse":    [{ "matcher": "Task", "hooks": [{ "type": "command",
+      "command": "python3 /path/to/trading-desk-office/office/desk_hook.py" }] }],
+    "PostToolUse":   [{ "matcher": "Task", "hooks": [{ "type": "command",
+      "command": "python3 /path/to/trading-desk-office/office/desk_hook.py" }] }],
+    "SessionEnd":    [{ "hooks": [{ "type": "command",
+      "command": "python3 /path/to/trading-desk-office/office/desk_hook.py" }] }]
+  }
+}
+```
+
+`SubagentStart` carries `agent_type` — the desk name verbatim from the
+frontmatter — so the board knows *which* desk lit up. `SubagentStop` carries
+only `agent_id`, so the hook remembers the id→desk mapping from start. The
+`Task` matcher is a fallback for Claude Code builds that spawn agents
+without firing a native `SubagentStart`.
+
+The hook swallows all exceptions and exits 0 — it can never block your CLI.
+
+### Requires Claude Code
+
+Hooks exist in the Claude Code CLI and desktop app. If you talk to your
+desks in the claude.ai **web** app, there is no hook system and the board
+cannot be driven this way.
 
 ## Token budget
 
-Resident cost, paid on every turn of the main session:
+Always-on, every turn of the main session:
 
 | Item | Cost |
 |---|---|
-| `CLAUDE.md` | ~350 tok |
-| 6 desk descriptions (for routing) | ~250 tok |
-| **Total always-on** | **~600 tok** |
+| `CLAUDE.md` | ~320 tok |
+| 4 desk descriptions (routing) | ~170 tok |
+| Office board | **0** |
+| **Total** | **~490 tok** |
 
-Per-desk cost, paid only when that desk is invoked — its prompt plus its
-tool schemas:
+Per invocation, only for the desk you called:
 
-| Desk | Schemas | Prompt | Approx total |
+| Desk | Schemas | Prompt | Approx |
 |---|---|---|---|
-| Risk | ~400 | ~330 | ~730 |
-| Execution | ~500 | ~280 | ~780 |
-| Equities | ~1,100 | ~310 | ~1,400 |
-| Macro | ~1,300 | ~300 | ~1,600 |
-| Quant | ~1,500 | ~330 | ~1,800 |
-| Options | ~1,900 | ~360 | ~2,300 |
+| `@news` | ~900 | ~380 | ~1,300 |
+| `@fundamentals` | ~950 | ~350 | ~1,300 |
+| `@technicals` | ~1,300 | ~350 | ~1,650 |
+| `@risk` | ~1,700 | ~430 | ~2,100 |
 
-For comparison, granting every desk the full IBKR surface would cost roughly
-**6,000 tokens of schema per desk invocation**. The allowlists cut that by
-60–85%. Widening one is the single most expensive edit you can make here.
+Granting a desk the full IBKR surface instead would cost roughly **6,000
+tokens of schema per invocation**. Estimated from 11 of the 25 schemas read
+directly (mean ≈ 243 tok, range 62–650) and extrapolated; right order of
+magnitude, not exact.
 
-Schema figures are estimated from 11 of the 25 IBKR tool schemas inspected
-directly (mean ≈ 243 tokens, range 62–650) and extrapolated to the rest.
-Treat them as the right order of magnitude, not exact.
-
-### Where tokens are actually spent
-
-Not on the agents — on the payloads. The three things that can dwarf
-everything in the table above:
-
-1. **Unbounded option chains.** A liquid name with no strike bounds returns
-   hundreds of rows. Always bound them; `@options` is instructed to.
-2. **Long bar series.** `ONE_YEAR` of daily bars is ~250 rows. Use
-   `step_count`, or send it to `@quant`.
-3. **Re-reading data into context.** `@quant` writes raw series to `data/`
-   and returns only the computed statistic. Use it above ~30 rows.
-
-## Memory
-
-Subagents are stateless — a desk starts fresh on every question. Continuity
-comes from `notes/<desk>.md`, which each desk reads at the start and appends
-to when a view changes. This is a deliberate trade: file-based memory costs
-a few hundred tokens per invocation instead of carrying a full conversation
-history per desk.
+**The real cost is payloads, not desks.** A year of daily bars is ~250 rows;
+a correlation across a ten-name book is ten of those. That is why
+`@technicals` and `@risk` write series to `data/` and reply with statistics
+only. Adding a fifth desk is nearly free. Letting one desk read raw bars
+into the conversation is not.
 
 ## Layout
 
 ```
-.claude/agents/     six desk definitions
-CLAUDE.md           house rules (loaded every session — keep it short)
-notes/              per-desk durable memory
-data/              scratch for @quant (gitignored)
+.claude/agents/   four desk definitions — paste your prompts here
+CLAUDE.md         house rules (loaded every session — keep it short)
+office/           status board: hook + state.json + index.html
+notes/            per-desk durable memory
+data/             scratch for computed series (gitignored)
 ```
-
-## Tuning
-
-- **Cheaper**: move `@execution` and `@risk` lookups to `model: haiku`
-  (execution already is). Drop desks you do not use — an unused desk still
-  costs its description on every turn.
-- **Sharper**: `model: opus` on `@risk` and `@options`, the two desks where
-  being wrong is expensive.
-- **Adding a desk**: copy the closest existing file, give it the smallest
-  tool allowlist that answers its questions, keep the body under ~30 lines.
