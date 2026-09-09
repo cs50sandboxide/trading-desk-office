@@ -41,30 +41,14 @@ never enter a context window. The board is free.
 ### Run it
 
 ```bash
-python3 -m http.server 8787 --directory office
-# open http://localhost:8787
+./office/serve.sh     # → http://localhost:8787
 ```
 
-### Wire the hooks
+### Setup
 
-Add to `~/.claude/settings.json` (adjust the path to this repo):
-
-```json
-{
-  "hooks": {
-    "SubagentStart": [{ "hooks": [{ "type": "command",
-      "command": "python3 /path/to/trading-desk-office/office/desk_hook.py" }] }],
-    "SubagentStop":  [{ "hooks": [{ "type": "command",
-      "command": "python3 /path/to/trading-desk-office/office/desk_hook.py" }] }],
-    "PreToolUse":    [{ "matcher": "Task", "hooks": [{ "type": "command",
-      "command": "python3 /path/to/trading-desk-office/office/desk_hook.py" }] }],
-    "PostToolUse":   [{ "matcher": "Task", "hooks": [{ "type": "command",
-      "command": "python3 /path/to/trading-desk-office/office/desk_hook.py" }] }],
-    "SessionEnd":    [{ "hooks": [{ "type": "command",
-      "command": "python3 /path/to/trading-desk-office/office/desk_hook.py" }] }]
-  }
-}
-```
+None. The hooks ship in `.claude/settings.json` and resolve their own path
+via `$CLAUDE_PROJECT_DIR`, so opening this repo in Claude Code is the whole
+installation. Nothing touches your global settings.
 
 `SubagentStart` carries `agent_type` — the desk name verbatim from the
 frontmatter — so the board knows *which* desk lit up. `SubagentStop` carries
@@ -76,9 +60,12 @@ The hook swallows all exceptions and exits 0 — it can never block your CLI.
 
 ### Requires Claude Code
 
-Hooks exist in the Claude Code CLI and desktop app. If you talk to your
-desks in the claude.ai **web** app, there is no hook system and the board
-cannot be driven this way.
+Hooks exist in the Claude Code CLI and desktop app only. There is no hook
+system in claude.ai Cowork or the web app, so the desks must live here as
+repo files rather than as Cowork agents. That is the trade that keeps the
+board free: the alternative — having each desk report its own status — costs
+roughly 4,000–6,000 tokens of tool schema per invocation, more than the
+desks themselves.
 
 ## Token budget
 
